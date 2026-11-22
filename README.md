@@ -52,7 +52,7 @@ python train.py --top-k 8 --epochs 2 --max-train-per-class 800 --max-eval-per-cl
 ## Run the app
 
 ```bash
-streamlit run app.py
+python run_app.py
 ```
 
 Train the model first. The app explains how to train it if no artifact exists. It does not silently substitute a keyword or mock classifier.
