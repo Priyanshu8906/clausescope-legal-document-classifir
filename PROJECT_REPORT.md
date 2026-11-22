@@ -1,58 +1,71 @@
-# DomainDoc NLP project report
+# DomainDesk NLP project report
 
 ## Objective
 
-Classify document text into the broad domains **legal**, **healthcare**, and **finance**. The app accepts pasted text or `.txt`, `.pdf`, and `.docx` files, shows the predicted domain and model confidence, and gives a short extractive summary.
+Build a document-topic classifier that predicts a broad domain from text. The app supports pasted text and `.txt`, `.pdf`, and `.docx` files, returns a ranked list of domain matches, and displays a short extractive preview.
 
-## Data
+## Supported categories
 
-The training set combines three public sources, with the source domain used as the target label:
+The classifier predicts one of 12 categories: legal, healthcare, finance, education, business, manufacturing, technology, science, news and politics, sports, automotive, or arts and entertainment.
 
-- LEDGAR legal contract provisions for `legal`.
-- Financial PhraseBank financial-news sentences for `finance`.
-- Expert-labeled PubMedQA questions, abstract contexts, and answers for `healthcare`.
+## Data and preparation
 
-The prepared split is balanced: 800 examples per domain for training, 100 per domain for validation, and 100 per domain for testing. Legal examples use LEDGAR's official partitions. Finance examples use Financial PhraseBank's official train/test partitions, with a disjoint validation subset from its training partition. PubMedQA's expert-labeled 1,000-example split is randomly divided 80/10/10 with seed 42. See `DATASETS.md` for source links and license notes; `data/processed/metadata.json` records exact counts.
+The main source is the English Document Topic Classification dataset, which contains web documents with 27 topic labels. This project uses 12 of those categories. It uses 180 train and 40 validation examples per category from the topic-specific training partitions, and 40 held-out examples per category from the separate test partition. Examples shorter than 180 characters are excluded from this source.
 
-## Preprocessing and model
+Three focused corpora add 80 train, 20 validation, and 20 test examples apiece to legal, healthcare, and finance:
 
-Preprocessing removes control characters and normalizes whitespace. For PubMedQA, the question, abstract context, and long answer are joined into one text field. The classifier fine-tunes `distilbert/distilbert-base-uncased` with a three-class classification head. The run uses a maximum sequence length of 192 tokens, batch size 8, two epochs, and seed 42.
+- LEDGAR contract provisions for legal.
+- PubMedQA questions, abstract context, and answers for healthcare.
+- Financial PhraseBank news sentences for finance.
 
-## Evaluation
+The combined prepared set has 2,400 training examples, 540 validation examples, and 540 test examples. Training uses class-balanced sampling so the supplemental rows do not overwhelm the other categories. Detailed source counts are in `data/processed/metadata.json`; source and license notes are in `DATASETS.md`.
 
-The model was fine-tuned for two epochs on CPU. On the held-out 300-example test split (100 examples per domain), it achieved:
+## Model and interface
 
-| Metric | Score |
-|---|---:|
-| Accuracy | 99.33% |
-| Macro F1 | 99.33% |
-| Weighted F1 | 99.33% |
-| Legal F1 | 99.01% |
-| Healthcare F1 | 100.00% |
-| Finance F1 | 98.99% |
+The classifier fine-tunes `distilbert/distilbert-base-uncased` for two epochs with seed 42 and a maximum training sequence length of 192 tokens. At inference, the app divides long text into overlapping 192-token windows and averages their class scores. The Streamlit interface includes sample documents, file upload or text entry, the leading domain matches, and an extractive preview.
 
-The model correctly classified all legal and healthcare test items and misclassified two finance items as legal. The exact run metrics are in `artifacts/domain-distilbert/metrics.json`; the confusion matrix is `artifacts/domain-distilbert/confusion_matrix.svg`.
+## Held-out evaluation
 
-The three source datasets differ in length, genre, and collection process. As a result, the model may learn source-specific style cues as well as domain content. Report these results as a classroom experiment on this dataset mixture, not as a general benchmark for arbitrary documents.
+The two-epoch CPU run scored **89.63% accuracy**, **89.49% macro F1**, and **89.46% weighted F1** on the 540-example test mixture. Per-category F1 is:
 
-## Limitations and appropriate use
+| Category | Test examples | F1 |
+|---|---:|---:|
+| Legal | 60 | 88.89% |
+| Healthcare | 60 | 94.92% |
+| Finance | 60 | 84.03% |
+| Education & careers | 40 | 90.24% |
+| Business & industry | 40 | 74.29% |
+| Industrial & manufacturing | 40 | 87.67% |
+| Software & technology | 40 | 94.87% |
+| Science & research | 40 | 93.98% |
+| News & politics | 40 | 98.77% |
+| Sports & athletics | 40 | 83.78% |
+| Autos & vehicles | 40 | 88.89% |
+| Arts & entertainment | 40 | 93.51% |
 
-This is an educational prototype, not a legal, medical, or financial advice system. It always predicts one of its three known categories, including for unrelated content. The softmax score is not calibrated confidence. Long documents are truncated to the model's input limit, so only their beginning may influence the prediction.
+Business and finance were the most confused pair in this run; sports and automotive examples also overlapped. The complete metrics and confusion matrix are saved in `artifacts/domain-distilbert/metrics.json` and `artifacts/domain-distilbert/confusion_matrix.svg`.
+
+## Limitations
+
+The general topic labels are inherited from an upstream annotation pipeline and can be noisy. The sources include English web pages, legal provisions, biomedical QA text, and short financial-news sentences, so their style and content differ. These metrics describe this particular held-out mixture; they do not guarantee performance on every user's documents.
+
+The app always selects from its 12 supported categories, even when text is outside that set. Its softmax score is not a calibrated probability. Scanned PDFs require OCR. The first 180,000 characters can be classified, split into overlapping windows.
 
 ## Reproduction
 
 ```powershell
 python download_data.py
 python prepare_data.py
-python train.py --epochs 2
+python train.py --epochs 2 --max-length 192 --batch-size 8
 python run_app.py --global.developmentMode false --server.port 8501 --server.address 127.0.0.1
 ```
 
-The first fine-tuning run downloads the base checkpoint. Raw datasets and the trained model are stored in the project repository.
+The selected raw topic files total about 530 MB and are downloaded locally; they are not stored in Git. The prepared splits and trained model are stored in the project.
 
-## Citations
+## References
 
 - Chalkidis et al. (2022), *LexGLUE: A Benchmark Dataset for Legal Language Understanding in English*, ACL 2022.
 - Tuggener et al. (2020), *LEDGAR: A Large-Scale Multi-label Corpus for Text Classification of Legal Provisions in Contracts*, LREC 2020.
 - Malo et al. (2014), *Good debt or bad debt: Detecting semantic orientations in economic texts*, JASIST 65.
 - Jin et al. (2019), *PubMedQA: A Dataset for Biomedical Research Question Answering*, EMNLP-IJCNLP 2019.
+- [English Document Topic Classification dataset](https://huggingface.co/datasets/agentlans/en-document-topic-classification) and its upstream source attribution.

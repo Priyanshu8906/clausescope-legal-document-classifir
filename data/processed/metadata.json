@@ -3,29 +3,117 @@
   "labels": [
     "legal",
     "healthcare",
-    "finance"
+    "finance",
+    "education",
+    "business",
+    "manufacturing",
+    "technology",
+    "science",
+    "news_politics",
+    "sports",
+    "automotive",
+    "arts_entertainment"
   ],
+  "display_names": {
+    "legal": "Legal",
+    "healthcare": "Healthcare",
+    "finance": "Finance & investment",
+    "education": "Education & careers",
+    "business": "Business & industry",
+    "manufacturing": "Industrial & manufacturing",
+    "technology": "Software & technology",
+    "science": "Science & research",
+    "news_politics": "News & politics",
+    "sports": "Sports & athletics",
+    "automotive": "Autos & vehicles",
+    "arts_entertainment": "Arts & entertainment"
+  },
   "source_counts": {
     "train": {
-      "legal": 800,
-      "finance": 800,
-      "healthcare": 800
+      "legal": 260,
+      "healthcare": 260,
+      "finance": 260,
+      "education": 180,
+      "business": 180,
+      "manufacturing": 180,
+      "technology": 180,
+      "science": 180,
+      "news_politics": 180,
+      "sports": 180,
+      "automotive": 180,
+      "arts_entertainment": 180
     },
     "validation": {
-      "legal": 100,
-      "finance": 100,
-      "healthcare": 100
+      "legal": 60,
+      "healthcare": 60,
+      "finance": 60,
+      "education": 40,
+      "business": 40,
+      "manufacturing": 40,
+      "technology": 40,
+      "science": 40,
+      "news_politics": 40,
+      "sports": 40,
+      "automotive": 40,
+      "arts_entertainment": 40
     },
     "test": {
-      "legal": 100,
-      "finance": 100,
-      "healthcare": 100
+      "legal": 60,
+      "healthcare": 60,
+      "finance": 60,
+      "education": 40,
+      "business": 40,
+      "manufacturing": 40,
+      "technology": 40,
+      "science": 40,
+      "news_politics": 40,
+      "sports": 40,
+      "automotive": 40,
+      "arts_entertainment": 40
     }
   },
   "sources": {
-    "legal": "coastalcph/lex_glue, ledgar; official train/validation/test partitions",
-    "healthcare": "highnote/pubmed_qa, pqa_labeled; seeded 80/10/10 split",
-    "finance": "mteb/financial_phrasebank, default; official train/test partitions, training partition split for validation"
+    "legal": [
+      "agentlans/en-document-topic-classification:Law & Government",
+      "coastalcph/lex_glue:ledgar"
+    ],
+    "healthcare": [
+      "agentlans/en-document-topic-classification:Health & Wellness",
+      "highnote/pubmed_qa:pqa_labeled"
+    ],
+    "finance": [
+      "agentlans/en-document-topic-classification:Finance & Investment",
+      "mteb/financial_phrasebank"
+    ],
+    "education": [
+      "agentlans/en-document-topic-classification:Education & Careers"
+    ],
+    "business": [
+      "agentlans/en-document-topic-classification:Business & Industry"
+    ],
+    "manufacturing": [
+      "agentlans/en-document-topic-classification:Industrial & Manufacturing"
+    ],
+    "technology": [
+      "agentlans/en-document-topic-classification:Software Engineering"
+    ],
+    "science": [
+      "agentlans/en-document-topic-classification:Science & Research"
+    ],
+    "news_politics": [
+      "agentlans/en-document-topic-classification:News & Politics"
+    ],
+    "sports": [
+      "agentlans/en-document-topic-classification:Sports & Athletics"
+    ],
+    "automotive": [
+      "agentlans/en-document-topic-classification:Autos & Vehicles"
+    ],
+    "arts_entertainment": [
+      "agentlans/en-document-topic-classification:Arts & Entertainment"
+    ]
   },
-  "preprocessing": "Remove control characters, normalize whitespace, concatenate PubMedQA question, abstract contexts, and long answer."
+  "topic_dataset": "agentlans/en-document-topic-classification; 12 focused topic configs; train and held-out All/test partitions",
+  "preprocessing": "Normalize whitespace/control characters, remove very short general-topic examples, truncate each row to 24,000 characters. PubMedQA question/context/answer are concatenated.",
+  "limitations": "The general topic labels are inherited from an upstream web-document annotation pipeline and may contain label noise. The data are English web documents, which differ from some scanned, multilingual, or highly specialized records. Model scores are not calibrated probabilities."
 }

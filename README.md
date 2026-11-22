@@ -1,62 +1,62 @@
-# DomainDoc — Document Domain Classifier
+# DomainDesk — document topic classifier
 
-DomainDoc is an NLP class project that predicts whether a text document belongs to the **legal**, **healthcare**, or **finance** domain. It fine-tunes DistilBERT on real public text datasets, evaluates on held-out data, and offers a Streamlit interface for pasted text or `.txt`, `.pdf`, and `.docx` uploads.
+DomainDesk predicts the topic of English document text across **12 categories**: legal, healthcare, finance, education, business, manufacturing, technology, science, news and politics, sports, automotive, and arts and entertainment. It fine-tunes DistilBERT and provides a polished Streamlit interface for pasted text or `.txt`, `.pdf`, and `.docx` uploads.
 
-> This is an educational prototype. It classifies domain only; it does not provide legal, medical, or financial advice. Its confidence score is not a calibrated probability.
+> Educational NLP project. Predictions are best-effort topic matches, not legal, medical, or financial advice. The model always selects among its supported categories, and its score is not a calibrated probability.
 
-## What is included
+## Features
 
-- Source data for LEDGAR (legal), Financial PhraseBank (finance), and PubMedQA (healthcare).
-- A reproducible preprocessing step that builds balanced labeled splits with seed 42.
-- A DistilBERT fine-tuning script and held-out metrics/confusion matrix.
-- A local Streamlit app for document upload or pasted text.
+- Fine-tuned 12-class DistilBERT model with held-out evaluation.
+- English document-topic examples from an attributed web-document corpus, plus focused LEDGAR, PubMedQA, and Financial PhraseBank data.
+- Balanced sampling during training to account for the supplemental class examples.
+- Whole-document inference using overlapping text windows instead of silently classifying only the opening paragraph.
+- Streamlit UI with a calm green theme, sample inputs, upload or paste modes, top alternatives, and a brief text preview.
+- Local inference after dependencies and model files are installed; uploaded text is not sent to a hosted classifier.
 
-The source datasets have different formats and lengths: LEDGAR contains short legal provisions, Financial PhraseBank contains finance news sentences, and PubMedQA provides biomedical questions, abstract context, and answers. They are combined for a three-domain classroom prototype. The model is not a general-purpose whole-file document understanding system; it uses the first 192 tokens during training and the beginning of long inputs during inference.
+The broad-topic dataset uses upstream labels created by an annotation pipeline. Some labels may be noisy or ambiguous. The focused legal, healthcare, and finance corpora add examples from those domains. See [`DATASETS.md`](DATASETS.md) for sources, license notes, and the scope of the prepared experiment.
 
-## Setup in VS Code (Windows)
+## Open and run in VS Code
 
-Open this folder in VS Code. In the integrated PowerShell terminal, create and activate a virtual environment, then install dependencies:
+Clone the private repository or open its folder in VS Code. In the integrated PowerShell terminal:
 
 ```powershell
+git lfs pull
 python -m venv .venv
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
+python run_app.py --global.developmentMode false --server.port 8501 --server.address 127.0.0.1
 ```
 
-If you cloned this repository, run `git lfs pull` to fetch the trained model stored with Git LFS.
+Open the local URL printed in the terminal. If port 8501 is already occupied, replace it with `8502` in the run command and open `http://localhost:8502`. Keep the terminal open while using the app.
 
-## Prepare data and train
+## Rebuild the training data and model
 
-The raw public dataset files are included. To regenerate the balanced splits and train:
+The tracked repository includes the prepared splits and fine-tuned model. To reproduce data preparation from public sources, the downloader fetches selected topic categories (about 500 MB total) and the focused domain datasets:
 
 ```powershell
 python download_data.py
 python prepare_data.py
-python train.py --epochs 2
+python train.py --epochs 2 --max-length 192 --batch-size 8
 ```
 
-The default preparation creates **800 training, 100 validation, and 100 test examples per domain** (2,400 / 300 / 300 total). Legal uses LEDGAR's official train/validation/test partitions. Finance uses Financial PhraseBank's train/test partitions and a held-out slice from its training partition for validation. Healthcare uses a seeded 80/10/10 split of the expert-labeled PubMedQA examples. The exact counts and sources are written to `data/processed/metadata.json` and the training report.
+The prepared set contains **2,400 training**, **540 validation**, and **540 test** examples. The web-document source provides disjoint train and test partitions; validation examples are reserved from the training side. LEDGAR, PubMedQA, and Financial PhraseBank add disjoint supplemental examples to legal, healthcare, and finance. The training loader uses class-balanced sampling; `data/processed/metadata.json` records the exact counts for each class.
 
-Optional training controls:
+The first fine-tuning run downloads the DistilBERT base checkpoint. CPU training works but takes longer than using a supported CUDA GPU. The training script saves the model, `metrics.json`, `label_map.json`, and a confusion matrix under `artifacts/domain-distilbert/`.
 
-```powershell
-python train.py --epochs 3 --max-train-per-class 800 --max-eval-per-class 100 --batch-size 8
-```
+## Limitations
 
-Training saves the model, tokenizer, `metrics.json`, `label_map.json`, and `confusion_matrix.svg` to `artifacts/domain-distilbert/`. The first training run downloads the pretrained checkpoint. A CUDA GPU is recommended; CPU training also works but takes longer.
+- Labels come from curated web-document topics and focused source datasets; some examples may be ambiguous, and the model can learn source or writing-style cues.
+- The supported labels are English-language topics, not every possible industry or document type.
+- The model returns a supported category even for out-of-scope text. Compare the top alternatives for mixed-domain documents.
+- Scanned PDFs need OCR. Long files are processed in overlapping windows up to the app's character limit.
+- The displayed softmax score is a model score, not a calibrated probability.
 
-## Run the app
+## Project files
 
-```powershell
-python run_app.py --global.developmentMode false --server.port 8501 --server.address 127.0.0.1
-```
-
-Open the URL printed in the terminal. Keep that terminal running while you use the app. If port 8501 is busy, change the port in the command and open the new URL.
-
-## Evaluation
-
-The training script reports accuracy, macro F1, weighted F1, per-domain F1/support, and a confusion matrix on the held-out test split. Because the domains come from different source datasets, scores measure this particular mix and split; they are not a universal benchmark for document-domain classification. Review the per-domain results and inspect misclassified examples before reporting the result.
-
-## Dataset attribution and limitations
-
-See [DATASETS.md](DATASETS.md) for source links, licenses, and citations. The classifier always chooses one of its three known domains, even for unrelated text, and can be influenced by the datasets' different writing styles. Do not use its predictions for high-stakes decisions.
+- `app.py` — Streamlit interface and document extraction/inference.
+- `download_data.py` — public source downloader.
+- `prepare_data.py` — cleaning, sampling, and split creation.
+- `train.py` — DistilBERT fine-tuning and evaluation.
+- `DATASETS.md` — data attribution and license notes.
+- `PROJECT_REPORT.md` — methodology, test results, and limitations.

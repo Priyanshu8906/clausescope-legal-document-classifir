@@ -1,4 +1,4 @@
-"""Fine-tune DistilBERT on the downloaded LEDGAR Parquet files."""
+"""Fine-tune a balanced DistilBERT classifier on twelve document domains."""
 from __future__ import annotations
 
 import argparse
@@ -33,20 +33,24 @@ except ImportError:
     pass
 
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 MODEL_ID = "distilbert/distilbert-base-uncased"
 DATA_DIR = ROOT / "data" / "processed"
-LABELS = ["legal", "healthcare", "finance"]
+LABELS = [
+    "legal", "healthcare", "finance", "education", "business",
+    "manufacturing", "technology", "science", "news_politics", "sports",
+    "automotive", "arts_entertainment",
+]
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--epochs", type=int, default=2)
     parser.add_argument("--max-length", type=int, default=192)
-    parser.add_argument("--max-train-per-class", type=int, default=800)
-    parser.add_argument("--max-eval-per-class", type=int, default=100)
+    parser.add_argument("--max-train-per-class", type=int, default=0)
+    parser.add_argument("--max-eval-per-class", type=int, default=0)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--output-dir", type=Path, default=ROOT / "artifacts" / "domain-distilbert")
     parser.add_argument("--seed", type=int, default=42)
@@ -83,7 +87,8 @@ def choose(rows: list[dict], cap: int, seed: int) -> list[dict]:
     return chosen
 
 
-def make_loader(samples: list[dict], tokenizer, batch_size: int, max_length: int, shuffle: bool):
+def make_loader(samples: list[dict], tokenizer, batch_size: int, max_length: int,
+                shuffle: bool, balance_classes: bool = False):
     tokenized = tokenizer([x["text"] for x in samples], truncation=True, max_length=max_length, padding=False)
     features = [{"input_ids": tokenized["input_ids"][i], "attention_mask": tokenized["attention_mask"][i],
                  "labels": samples[i]["label"]} for i in range(len(samples))]
@@ -93,7 +98,14 @@ def make_loader(samples: list[dict], tokenizer, batch_size: int, max_length: int
                                  for item in batch], padding=True, return_tensors="pt")
         encoded["labels"] = labels
         return encoded
-    return DataLoader(features, batch_size=batch_size, shuffle=shuffle, collate_fn=collate)
+    sampler = None
+    if balance_classes:
+        label_counts = {label: sum(row["label"] == label for row in samples) for label in range(len(LABELS))}
+        weights = [1.0 / label_counts[row["label"]] for row in samples]
+        sampler = WeightedRandomSampler(weights, num_samples=len(samples), replacement=True)
+    return DataLoader(features, batch_size=batch_size,
+                      shuffle=shuffle if sampler is None else False,
+                      sampler=sampler, collate_fn=collate)
 
 
 def evaluate(model, loader, device, label_count: int) -> tuple[dict, list[list[int]]]:
@@ -116,7 +128,8 @@ def evaluate(model, loader, device, label_count: int) -> tuple[dict, list[list[i
     metrics = {"accuracy": correct / total if total else 0.0,
                "macro_f1": sum(f1s) / label_count,
                "weighted_f1": sum(f * n for f, n in zip(f1s, supports)) / total if total else 0.0,
-               "examples": total, "per_label_f1": f1s, "per_label_support": supports}
+               "examples": total, "per_label_f1": f1s, "per_label_support": supports,
+               "per_label": {LABELS[i]: {"f1": f1s[i], "support": supports[i]} for i in range(label_count)}}
     return metrics, confusion
 
 
@@ -168,7 +181,7 @@ def main() -> None:
     use_amp = device.type == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5, weight_decay=0.01)
-    train_loader = make_loader(train_samples, tokenizer, args.batch_size, args.max_length, True)
+    train_loader = make_loader(train_samples, tokenizer, args.batch_size, args.max_length, True, balance_classes=True)
     val_loader = make_loader(val_samples, tokenizer, args.batch_size * 2, args.max_length, False)
     for epoch in range(args.epochs):
         model.train()
@@ -197,7 +210,7 @@ def main() -> None:
     tokenizer.save_pretrained(model_dir)
     (args.output_dir / "label_map.json").write_text(json.dumps({"labels": selected_names}, indent=2), encoding="utf-8")
     data_metadata = json.loads((DATA_DIR / "metadata.json").read_text(encoding="utf-8"))
-    report = {"dataset": "legal + healthcare + finance text domain classification", "base_model": MODEL_ID,
+    report = {"dataset": "twelve-domain document classification using agentlans English Document Topic Classification plus LEDGAR, PubMedQA, and Financial PhraseBank", "base_model": MODEL_ID,
               "device": str(device), "seed": args.seed, "epochs": args.epochs,
               "max_length": args.max_length,
               "max_train_per_class": args.max_train_per_class, "max_eval_per_class": args.max_eval_per_class,

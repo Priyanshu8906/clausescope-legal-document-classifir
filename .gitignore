@@ -3,6 +3,8 @@ __pycache__/
 venv/
 .runtime/
 .streamlit/
+!.streamlit/
+!.streamlit/config.toml
 artifacts/
 !artifacts/
 !artifacts/domain-distilbert/
@@ -12,5 +14,6 @@ artifacts/
 !artifacts/domain-distilbert/model/
 !artifacts/domain-distilbert/model/**
 !data/raw/ledgar/
+data/raw/document_topics/
 *.pyc
 

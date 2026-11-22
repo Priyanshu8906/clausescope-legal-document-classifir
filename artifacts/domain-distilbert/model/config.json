@@ -13,13 +13,31 @@
   "id2label": {
     "0": "legal",
     "1": "healthcare",
-    "2": "finance"
+    "2": "finance",
+    "3": "education",
+    "4": "business",
+    "5": "manufacturing",
+    "6": "technology",
+    "7": "science",
+    "8": "news_politics",
+    "9": "sports",
+    "10": "automotive",
+    "11": "arts_entertainment"
   },
   "initializer_range": 0.02,
   "label2id": {
+    "arts_entertainment": 11,
+    "automotive": 10,
+    "business": 4,
+    "education": 3,
     "finance": 2,
     "healthcare": 1,
-    "legal": 0
+    "legal": 0,
+    "manufacturing": 5,
+    "news_politics": 8,
+    "science": 7,
+    "sports": 9,
+    "technology": 6
   },
   "max_position_embeddings": 512,
   "model_type": "distilbert",

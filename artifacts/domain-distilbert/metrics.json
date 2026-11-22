@@ -1,58 +1,324 @@
 {
-  "dataset": "legal + healthcare + finance text domain classification",
+  "dataset": "twelve-domain document classification using agentlans English Document Topic Classification plus LEDGAR, PubMedQA, and Financial PhraseBank",
   "base_model": "distilbert/distilbert-base-uncased",
   "device": "cpu",
   "seed": 42,
   "epochs": 2,
   "max_length": 192,
-  "max_train_per_class": 800,
-  "max_eval_per_class": 100,
+  "max_train_per_class": 0,
+  "max_eval_per_class": 0,
   "labels": [
     "legal",
     "healthcare",
-    "finance"
+    "finance",
+    "education",
+    "business",
+    "manufacturing",
+    "technology",
+    "science",
+    "news_politics",
+    "sports",
+    "automotive",
+    "arts_entertainment"
   ],
   "data_sources": {
-    "legal": "coastalcph/lex_glue, ledgar; official train/validation/test partitions",
-    "healthcare": "highnote/pubmed_qa, pqa_labeled; seeded 80/10/10 split",
-    "finance": "mteb/financial_phrasebank, default; official train/test partitions, training partition split for validation"
+    "legal": [
+      "agentlans/en-document-topic-classification:Law & Government",
+      "coastalcph/lex_glue:ledgar"
+    ],
+    "healthcare": [
+      "agentlans/en-document-topic-classification:Health & Wellness",
+      "highnote/pubmed_qa:pqa_labeled"
+    ],
+    "finance": [
+      "agentlans/en-document-topic-classification:Finance & Investment",
+      "mteb/financial_phrasebank"
+    ],
+    "education": [
+      "agentlans/en-document-topic-classification:Education & Careers"
+    ],
+    "business": [
+      "agentlans/en-document-topic-classification:Business & Industry"
+    ],
+    "manufacturing": [
+      "agentlans/en-document-topic-classification:Industrial & Manufacturing"
+    ],
+    "technology": [
+      "agentlans/en-document-topic-classification:Software Engineering"
+    ],
+    "science": [
+      "agentlans/en-document-topic-classification:Science & Research"
+    ],
+    "news_politics": [
+      "agentlans/en-document-topic-classification:News & Politics"
+    ],
+    "sports": [
+      "agentlans/en-document-topic-classification:Sports & Athletics"
+    ],
+    "automotive": [
+      "agentlans/en-document-topic-classification:Autos & Vehicles"
+    ],
+    "arts_entertainment": [
+      "agentlans/en-document-topic-classification:Arts & Entertainment"
+    ]
   },
   "sample_sizes": {
     "train": 2400,
-    "validation": 300,
-    "test": 300
+    "validation": 540,
+    "test": 540
   },
   "test": {
-    "accuracy": 0.9933333333333333,
-    "macro_f1": 0.9933326665999934,
-    "weighted_f1": 0.9933326665999933,
-    "examples": 300,
+    "accuracy": 0.8962962962962963,
+    "macro_f1": 0.894859085780992,
+    "weighted_f1": 0.8946294675725689,
+    "examples": 540,
     "per_label_f1": [
-      0.9900990099009901,
-      1.0,
-      0.98989898989899
+      0.8888888888888888,
+      0.9491525423728814,
+      0.8403361344537815,
+      0.9024390243902439,
+      0.7428571428571429,
+      0.8767123287671232,
+      0.9487179487179487,
+      0.9397590361445783,
+      0.9876543209876543,
+      0.8378378378378378,
+      0.8888888888888888,
+      0.935064935064935
     ],
     "per_label_support": [
-      100,
-      100,
-      100
-    ]
+      60,
+      60,
+      60,
+      40,
+      40,
+      40,
+      40,
+      40,
+      40,
+      40,
+      40,
+      40
+    ],
+    "per_label": {
+      "legal": {
+        "f1": 0.8888888888888888,
+        "support": 60
+      },
+      "healthcare": {
+        "f1": 0.9491525423728814,
+        "support": 60
+      },
+      "finance": {
+        "f1": 0.8403361344537815,
+        "support": 60
+      },
+      "education": {
+        "f1": 0.9024390243902439,
+        "support": 40
+      },
+      "business": {
+        "f1": 0.7428571428571429,
+        "support": 40
+      },
+      "manufacturing": {
+        "f1": 0.8767123287671232,
+        "support": 40
+      },
+      "technology": {
+        "f1": 0.9487179487179487,
+        "support": 40
+      },
+      "science": {
+        "f1": 0.9397590361445783,
+        "support": 40
+      },
+      "news_politics": {
+        "f1": 0.9876543209876543,
+        "support": 40
+      },
+      "sports": {
+        "f1": 0.8378378378378378,
+        "support": 40
+      },
+      "automotive": {
+        "f1": 0.8888888888888888,
+        "support": 40
+      },
+      "arts_entertainment": {
+        "f1": 0.935064935064935,
+        "support": 40
+      }
+    }
   },
   "confusion_matrix": [
     [
-      100,
+      60,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
       0,
       0
     ],
     [
-      0,
-      100,
-      0
-    ],
-    [
+      1,
+      56,
+      1,
       2,
       0,
-      98
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      5,
+      1,
+      50,
+      0,
+      2,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      0
+    ],
+    [
+      1,
+      0,
+      0,
+      37,
+      0,
+      0,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0
+    ],
+    [
+      4,
+      0,
+      6,
+      1,
+      26,
+      1,
+      0,
+      2,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      1,
+      0,
+      2,
+      0,
+      2,
+      32,
+      0,
+      0,
+      0,
+      1,
+      2,
+      0
+    ],
+    [
+      1,
+      0,
+      0,
+      1,
+      0,
+      0,
+      37,
+      0,
+      0,
+      0,
+      0,
+      1
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      39,
+      0,
+      0,
+      1,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      40,
+      0,
+      0,
+      0
+    ],
+    [
+      1,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      1,
+      31,
+      6,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      40,
+      0
+    ],
+    [
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      1,
+      0,
+      36
     ]
   ]
 }

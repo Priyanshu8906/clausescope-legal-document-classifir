@@ -2,6 +2,15 @@
   "labels": [
     "legal",
     "healthcare",
-    "finance"
+    "finance",
+    "education",
+    "business",
+    "manufacturing",
+    "technology",
+    "science",
+    "news_politics",
+    "sports",
+    "automotive",
+    "arts_entertainment"
   ]
 }

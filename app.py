@@ -1,10 +1,10 @@
-"""DomainDoc: local educational legal, healthcare, and finance text classifier."""
+"""DomainDesk: twelve-topic document classification for an NLP class project."""
 from __future__ import annotations
 
+import io
 import re
 import sys
 import types
-from functools import lru_cache
 from pathlib import Path
 
 LOCAL_PACKAGES = Path(__file__).resolve().parent / ".runtime"
@@ -16,8 +16,6 @@ try:
     try:
         import numpy.random  # noqa: F401
     except (ImportError, OSError):
-        # The host's Windows application-control policy blocks this optional
-        # extension; the UI does not use NumPy random-number functions.
         np.random = types.ModuleType("numpy.random")
         np.random.Generator = object
         np.random.BitGenerator = object
@@ -28,16 +26,92 @@ except ImportError:
 
 import streamlit as st
 
-ARTIFACT_DIR = Path(__file__).parent / "artifacts" / "domain-distilbert" / "model"
-MAX_CHARS = 60_000
+ROOT = Path(__file__).resolve().parent
+MODEL_DIR = ROOT / "artifacts" / "domain-distilbert" / "model"
+MAX_INPUT_CHARS = 180_000
+MAX_LENGTH = 192
+STRIDE = 64
+BATCH_SIZE = 8
 
-st.set_page_config(page_title="DomainDoc | Document domains", page_icon=":material/folder_open:", layout="wide")
+DOMAINS = {
+    "legal": "Legal",
+    "healthcare": "Healthcare",
+    "finance": "Finance & investment",
+    "education": "Education & careers",
+    "business": "Business & industry",
+    "manufacturing": "Industrial & manufacturing",
+    "technology": "Software & technology",
+    "science": "Science & research",
+    "news_politics": "News & politics",
+    "sports": "Sports & athletics",
+    "automotive": "Autos & vehicles",
+    "arts_entertainment": "Arts & entertainment",
+}
 
-@lru_cache(maxsize=1)
+EXAMPLES = {
+    "Legal": "Under section 4.2, the supplier shall indemnify the customer against third-party claims arising from a breach of this agreement. Either party may terminate for material breach after 30 days' written notice. This agreement is governed by the laws of the State of New York.",
+    "Healthcare": "Assessment: The patient reports persistent cough and shortness of breath. Oxygen saturation is 93% on room air. The care plan includes chest imaging, monitoring of respiratory status, and follow-up after treatment.",
+    "Finance & investment": "The company reported quarterly revenue of $4.2 billion, up 8% year over year. Operating margin was 14.6%, while free cash flow reached $620 million. Management maintained its full-year earnings guidance.",
+    "Education & careers": "Learning objectives: students will compare primary sources, support a written claim with evidence, and revise their work using peer feedback. The assessment rubric measures reasoning, organization, and use of evidence.",
+    "Business & industry": "The company expanded its regional distribution network and hired 120 employees this quarter. Management expects the new facility to reduce delivery times and improve operating efficiency across the supply chain.",
+    "Industrial & manufacturing": "Production quality report: 2.1% of units failed final inspection, primarily due to inconsistent torque at assembly station three. The corrective action is to recalibrate the tooling and add an in-process verification check.",
+    "Software & technology": "The release adds an API endpoint for batch processing, improves query latency, and fixes a memory leak in the worker service. Administrators can configure authentication scopes in the deployment settings.",
+    "Science & research": "The study measured changes in surface temperature across three experimental conditions. Results indicate a statistically significant difference between the control and treatment groups, although further replication is needed.",
+    "News & politics": "The committee voted Tuesday to advance the proposed measure after a three-hour hearing. Lawmakers said the bill will receive a full chamber debate next month, while opposition members called for amendments.",
+    "Sports & athletics": "The home side scored twice in the final quarter to secure a 3–1 win. The coach praised the midfield pressing and said the team will focus on recovery before Saturday's away fixture.",
+    "Autos & vehicles": "The 2026 model adds a more efficient hybrid powertrain, updated driver-assistance features, and a redesigned interior. The manufacturer says deliveries will begin at dealerships in early spring.",
+    "Arts & entertainment": "The director's new production opens with a spare piano arrangement before the ensemble enters. Critics praised the performances and lighting design, while noting that the second act moves at a slower pace.",
+}
+
+st.set_page_config(
+    page_title="DomainDesk | Document classifier",
+    page_icon=":material/folder_open:",
+    layout="wide",
+)
+
+
+@st.cache_resource(show_spinner="Loading the local classifier…")
 def load_classifier(model_path: str):
-    from transformers import pipeline
-    return pipeline("text-classification", model=model_path, tokenizer=model_path,
-                    top_k=None, truncation=True, max_length=256)
+    import torch
+    from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    model = AutoModelForSequenceClassification.from_pretrained(model_path)
+    model.to(device)
+    model.eval()
+    return tokenizer, model, device
+
+
+def predict_document(text: str) -> tuple[list[tuple[str, float]], int]:
+    import torch
+
+    tokenizer, model, device = load_classifier(str(MODEL_DIR.resolve()))
+    encoded = tokenizer(
+        text,
+        truncation=True,
+        max_length=MAX_LENGTH,
+        stride=STRIDE,
+        return_overflowing_tokens=True,
+        padding=True,
+        return_tensors="pt",
+    )
+    inputs = {key: value for key, value in encoded.items() if key in {"input_ids", "attention_mask"}}
+    batches = []
+    with torch.inference_mode():
+        for start in range(0, len(inputs["input_ids"]), BATCH_SIZE):
+            batch = {key: value[start:start + BATCH_SIZE].to(device) for key, value in inputs.items()}
+            logits = model(**batch).logits
+            batches.append(torch.softmax(logits, dim=-1).cpu())
+    scores = torch.cat(batches, dim=0).mean(dim=0).tolist()
+    labels = model.config.id2label
+    results = sorted(
+        [(labels[index], float(score)) for index, score in enumerate(scores)],
+        key=lambda item: item[1],
+        reverse=True,
+    )
+    return results, len(inputs["input_ids"])
+
 
 def read_document(upload) -> str:
     data = upload.getvalue()
@@ -46,67 +120,128 @@ def read_document(upload) -> str:
         return data.decode("utf-8", errors="replace")
     if suffix == ".pdf":
         from pypdf import PdfReader
-        import io
+
         reader = PdfReader(io.BytesIO(data))
         return "\n".join(page.extract_text() or "" for page in reader.pages)
     if suffix == ".docx":
         from docx import Document
-        import io
-        doc = Document(io.BytesIO(data))
-        return "\n".join(p.text for p in doc.paragraphs)
+
+        document = Document(io.BytesIO(data))
+        return "\n".join(paragraph.text for paragraph in document.paragraphs)
     raise ValueError("Choose a .txt, .pdf, or .docx file.")
 
-def summarize(text: str) -> str:
+
+def short_preview(text: str) -> str:
     sentences = re.split(r"(?<=[.!?])\s+", re.sub(r"\s+", " ", text.strip()))
-    summary = " ".join(s for s in sentences[:2] if s)
-    return summary[:500] + ("…" if len(summary) > 500 else "")
+    preview = " ".join(sentence for sentence in sentences[:2] if sentence)
+    return preview[:420] + ("…" if len(preview) > 420 else "")
 
-st.markdown("# DomainDoc")
-st.caption("Document domain classification · Legal · Healthcare · Finance · NLP class project")
-st.info("Educational classifier only. It predicts a document domain; it does not provide legal, medical, or financial advice.")
 
-if not ARTIFACT_DIR.exists():
-    st.warning("No trained model is installed yet. From the project folder, run `python download_data.py`, `python prepare_data.py`, then `python train.py`; reload this page when training finishes.")
+def domain_name(label: str) -> str:
+    return DOMAINS.get(label, label.replace("_", " ").title())
 
-left, right = st.columns([1.15, .85], gap="large")
-with left:
-    st.subheader("Provide a document")
-    uploaded = st.file_uploader("Upload a document", type=["txt", "pdf", "docx"], help="Scanned PDFs without selectable text need OCR first.")
-    pasted = st.text_area("Or paste text", height=260, placeholder="Paste a contract excerpt, biomedical abstract, financial report, or other document text…")
-    chosen = pasted.strip()
+
+with st.sidebar:
+    st.title("DomainDesk", icon=":material/folder_open:")
+    st.caption("A document-domain classifier")
+    st.markdown("#### Supported domains")
+    st.write("Legal · Healthcare · Finance · Education")
+    st.write("Business · Manufacturing · Technology · Science")
+    st.write("News · Sports · Automotive · Arts & entertainment")
+    st.markdown("#### How it works")
+    st.caption("A locally fine-tuned DistilBERT model reads the full document in overlapping text windows and compares its score across twelve supported topics.")
+    st.caption("Documents stay on this computer. Scanned PDFs need OCR before upload.")
+
+st.title("Find the domain of a document", icon=":material/description:")
+st.markdown("Drop in a document or paste text. DomainDesk reviews the entire text and shows its strongest domain matches.")
+
+if not MODEL_DIR.exists():
+    st.warning(
+        "The expanded twelve-domain model is not installed yet. From the project folder, run `python download_data.py`, `python prepare_data.py`, and `python train.py`.",
+        title="Model files are missing",
+    )
+
+input_mode = st.segmented_control(
+    "Choose an input method",
+    ["Paste text", "Upload a file"],
+    default="Paste text",
+    key="input_mode",
+    selection_mode="single",
+)
+
+document_text = ""
+if input_mode == "Paste text":
+    example = st.selectbox("Try an example", ["Choose a sample…", *EXAMPLES.keys()], key="example_domain")
+    initial_text = EXAMPLES.get(example, "")
+    document_text = st.text_area(
+        "Document text",
+        value=initial_text,
+        height=250,
+        placeholder="Paste a contract, care note, financial report, lesson plan, business page, software document, research summary, news article, sports report, vehicle description, or arts review…",
+        help="For a more reliable result, provide several sentences or a full document section.",
+    )
+else:
+    uploaded = st.file_uploader(
+        "Choose a document",
+        type=["txt", "pdf", "docx"],
+        help="Selectable-text PDFs work best. Scanned pages need OCR first.",
+    )
     if uploaded:
         try:
-            chosen = read_document(uploaded).strip()
-            st.caption(f"Extracted {len(chosen):,} characters from {uploaded.name}.")
+            document_text = read_document(uploaded)
+            st.caption(f"Extracted {len(document_text):,} characters from {uploaded.name}.")
         except Exception as exc:
             st.error(f"Could not read this file: {exc}")
-    if chosen and len(chosen) > MAX_CHARS:
-        st.warning(f"Input is long ({len(chosen):,} characters); the app will use the first {MAX_CHARS:,} characters before model tokenization.")
-    classify = st.button("Classify document", type="primary", disabled=not bool(chosen) or not ARTIFACT_DIR.exists(), width="stretch")
 
-with right:
-    st.subheader("Prediction")
-    if classify:
-        try:
-            with st.spinner("Running the local model…"):
-                results = load_classifier(str(ARTIFACT_DIR.resolve()))(chosen[:MAX_CHARS])[0]
-            results = sorted(results, key=lambda item: item["score"], reverse=True)
-            best = results[0]
-            st.markdown(f"### Domain: {best['label'].replace('_', ' ').title()}")
-            st.metric("Model confidence", f"{best['score']:.1%}")
-            st.progress(float(best["score"]))
-            st.caption("Softmax confidence is not a calibrated probability. A closed-set model always selects legal, healthcare, or finance, even for unrelated text.")
-            st.markdown("**Brief extractive summary**")
-            st.write(summarize(chosen))
-            st.markdown("**Other domain scores**")
-            for item in results[1:4]:
-                st.write(f"{item['label'].replace('_', ' ').title()} · {item['score']:.1%}")
-            if len(chosen.split()) > 220:
-                st.warning("This document is longer than the model input limit; only its beginning may affect the prediction.")
-        except Exception as exc:
-            st.error(f"Inference failed: {exc}")
+document_text = document_text.strip()
+if document_text and len(document_text) > MAX_INPUT_CHARS:
+    st.warning(f"This file has {len(document_text):,} characters. The app will classify the first {MAX_INPUT_CHARS:,} characters.")
+    document_text = document_text[:MAX_INPUT_CHARS]
+
+if document_text:
+    words = len(document_text.split())
+    if words < 35:
+        st.caption("Short input can be ambiguous. A paragraph or a full document section usually gives the model more useful evidence.")
     else:
-        st.write("Your category, confidence, and brief text summary will appear here.")
+        st.caption(f"{words:,} words ready for classification")
 
-with st.expander("About the model and data"):
-    st.write("The model fine-tunes DistilBERT on a balanced set of public examples: LEDGAR legal provisions, Financial PhraseBank finance text, and PubMedQA biomedical questions with abstract context and answers. This is a domain classifier rather than a clause-type classifier. Source datasets vary in length and style, so treat the result as a classroom prototype. Training and inference run locally after the base model is downloaded.")
+classify = st.button(
+    "Classify document",
+    type="primary",
+    icon=":material/search:",
+    disabled=not bool(document_text) or not MODEL_DIR.exists(),
+    width="stretch",
+)
+
+if classify:
+    if len(document_text.split()) < 12:
+        st.warning("Please provide at least a few complete sentences for a useful classification.", title="More text is needed")
+    else:
+        try:
+            with st.spinner("Reading document sections…"):
+                predictions, chunk_count = predict_document(document_text)
+            best_label, best_score = predictions[0]
+            heading, icon = ("Likely domain", ":material/check_circle:") if best_score >= 0.60 else ("Possible match · review alternatives", ":material/info:")
+            with st.container(border=True):
+                st.subheader(heading, icon=icon)
+                left, right = st.columns([1, 2], vertical_alignment="center")
+                with left:
+                    st.metric("Top match", domain_name(best_label))
+                    st.metric("Model score", f"{best_score:.1%}")
+                with right:
+                    st.markdown("**Other domain matches**")
+                    for label, score in predictions[1:4]:
+                        st.progress(score, text=f"{domain_name(label)} · {score:.1%}")
+                st.caption(f"Compared {chunk_count} overlapping text sections. Scores are model signals, not calibrated probabilities; mixed or unsupported documents can be misclassified.")
+            with st.expander("Document preview"):
+                st.write(short_preview(document_text))
+        except Exception as exc:
+            st.error(f"Classification failed: {exc}")
+
+if not classify:
+    st.space("small")
+    with st.container(border=True):
+        st.subheader("Twelve topics, one simple workflow", icon=":material/auto_awesome:")
+        st.write("The model compares your text with examples spanning legal, healthcare, finance, education, business, manufacturing, technology, science, news, sports, automotive, and arts content.")
+
+st.caption("Educational NLP project · Not professional legal, medical, or financial advice")
