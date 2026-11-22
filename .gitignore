@@ -1,0 +1,16 @@
+__pycache__/
+.venv/
+venv/
+.runtime/
+.streamlit/
+artifacts/
+!artifacts/
+!artifacts/ledgar-distilbert/
+!artifacts/ledgar-distilbert/metrics.json
+!artifacts/ledgar-distilbert/label_map.json
+!artifacts/ledgar-distilbert/confusion_matrix.svg
+!artifacts/ledgar-distilbert/model/
+!artifacts/ledgar-distilbert/model/**
+!data/raw/ledgar/
+*.pyc
+
