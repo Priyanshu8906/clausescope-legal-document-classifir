@@ -1,0 +1,58 @@
+{
+  "dataset": "legal + healthcare + finance text domain classification",
+  "base_model": "distilbert/distilbert-base-uncased",
+  "device": "cpu",
+  "seed": 42,
+  "epochs": 2,
+  "max_length": 192,
+  "max_train_per_class": 800,
+  "max_eval_per_class": 100,
+  "labels": [
+    "legal",
+    "healthcare",
+    "finance"
+  ],
+  "data_sources": {
+    "legal": "coastalcph/lex_glue, ledgar; official train/validation/test partitions",
+    "healthcare": "highnote/pubmed_qa, pqa_labeled; seeded 80/10/10 split",
+    "finance": "mteb/financial_phrasebank, default; official train/test partitions, training partition split for validation"
+  },
+  "sample_sizes": {
+    "train": 2400,
+    "validation": 300,
+    "test": 300
+  },
+  "test": {
+    "accuracy": 0.9933333333333333,
+    "macro_f1": 0.9933326665999934,
+    "weighted_f1": 0.9933326665999933,
+    "examples": 300,
+    "per_label_f1": [
+      0.9900990099009901,
+      1.0,
+      0.98989898989899
+    ],
+    "per_label_support": [
+      100,
+      100,
+      100
+    ]
+  },
+  "confusion_matrix": [
+    [
+      100,
+      0,
+      0
+    ],
+    [
+      0,
+      100,
+      0
+    ],
+    [
+      2,
+      0,
+      98
+    ]
+  ]
+}

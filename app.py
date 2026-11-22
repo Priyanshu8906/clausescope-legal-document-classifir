@@ -1,4 +1,4 @@
-"""ClauseScope: local educational legal clause classification demo."""
+"""DomainDoc: local educational legal, healthcare, and finance text classifier."""
 from __future__ import annotations
 
 import re
@@ -28,10 +28,10 @@ except ImportError:
 
 import streamlit as st
 
-ARTIFACT_DIR = Path(__file__).parent / "artifacts" / "ledgar-distilbert" / "model"
+ARTIFACT_DIR = Path(__file__).parent / "artifacts" / "domain-distilbert" / "model"
 MAX_CHARS = 60_000
 
-st.set_page_config(page_title="ClauseScope | Legal NLP", page_icon="⚖️", layout="wide")
+st.set_page_config(page_title="DomainDoc | Document domains", page_icon=":material/folder_open:", layout="wide")
 
 @lru_cache(maxsize=1)
 def load_classifier(model_path: str):
@@ -61,18 +61,18 @@ def summarize(text: str) -> str:
     summary = " ".join(s for s in sentences[:2] if s)
     return summary[:500] + ("…" if len(summary) > 500 else "")
 
-st.markdown("# ⚖️ ClauseScope")
-st.caption("Legal clause classification · NLP class project · DistilBERT fine-tuned on LEDGAR")
-st.info("Educational prototype only. This model labels short contract provisions; it is not legal advice and does not assess enforceability.")
+st.markdown("# DomainDoc")
+st.caption("Document domain classification · Legal · Healthcare · Finance · NLP class project")
+st.info("Educational classifier only. It predicts a document domain; it does not provide legal, medical, or financial advice.")
 
 if not ARTIFACT_DIR.exists():
-    st.warning("No trained model is installed yet. From the project folder, run `python train.py --top-k 8 --epochs 2`, then reload this page.")
+    st.warning("No trained model is installed yet. From the project folder, run `python download_data.py`, `python prepare_data.py`, then `python train.py`; reload this page when training finishes.")
 
 left, right = st.columns([1.15, .85], gap="large")
 with left:
-    st.subheader("Provide a provision")
+    st.subheader("Provide a document")
     uploaded = st.file_uploader("Upload a document", type=["txt", "pdf", "docx"], help="Scanned PDFs without selectable text need OCR first.")
-    pasted = st.text_area("Or paste text", height=260, placeholder="Paste one legal clause or provision here…")
+    pasted = st.text_area("Or paste text", height=260, placeholder="Paste a contract excerpt, biomedical abstract, financial report, or other document text…")
     chosen = pasted.strip()
     if uploaded:
         try:
@@ -82,7 +82,7 @@ with left:
             st.error(f"Could not read this file: {exc}")
     if chosen and len(chosen) > MAX_CHARS:
         st.warning(f"Input is long ({len(chosen):,} characters); the app will use the first {MAX_CHARS:,} characters before model tokenization.")
-    classify = st.button("Classify provision", type="primary", disabled=not bool(chosen) or not ARTIFACT_DIR.exists(), use_container_width=True)
+    classify = st.button("Classify document", type="primary", disabled=not bool(chosen) or not ARTIFACT_DIR.exists(), width="stretch")
 
 with right:
     st.subheader("Prediction")
@@ -92,21 +92,21 @@ with right:
                 results = load_classifier(str(ARTIFACT_DIR.resolve()))(chosen[:MAX_CHARS])[0]
             results = sorted(results, key=lambda item: item["score"], reverse=True)
             best = results[0]
-            st.markdown(f"### {best['label'].replace('_', ' ').title()}")
+            st.markdown(f"### Domain: {best['label'].replace('_', ' ').title()}")
             st.metric("Model confidence", f"{best['score']:.1%}")
             st.progress(float(best["score"]))
-            st.caption("Softmax confidence is not a calibrated probability. A closed-set model always selects from its known labels.")
+            st.caption("Softmax confidence is not a calibrated probability. A closed-set model always selects legal, healthcare, or finance, even for unrelated text.")
             st.markdown("**Brief extractive summary**")
             st.write(summarize(chosen))
-            st.markdown("**Other likely labels**")
+            st.markdown("**Other domain scores**")
             for item in results[1:4]:
                 st.write(f"{item['label'].replace('_', ' ').title()} · {item['score']:.1%}")
             if len(chosen.split()) > 220:
-                st.warning("This is much longer than the short provisions used for training. Only the beginning may influence the prediction.")
+                st.warning("This document is longer than the model input limit; only its beginning may affect the prediction.")
         except Exception as exc:
             st.error(f"Inference failed: {exc}")
     else:
         st.write("Your category, confidence, and brief text summary will appear here.")
 
 with st.expander("About the model and data"):
-    st.write("LEDGAR is a public dataset of labeled clauses from U.S. contracts. The project selects the most frequent labels from the training split, fine-tunes DistilBERT, and evaluates on the dataset's held-out test split. Results depend on the labels and run settings. Training and inference run locally after model files are downloaded.")
+    st.write("The model fine-tunes DistilBERT on a balanced set of public examples: LEDGAR legal provisions, Financial PhraseBank finance text, and PubMedQA biomedical questions with abstract context and answers. This is a domain classifier rather than a clause-type classifier. Source datasets vary in length and style, so treat the result as a classroom prototype. Training and inference run locally after the base model is downloaded.")

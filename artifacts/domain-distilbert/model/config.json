@@ -11,25 +11,15 @@
   "eos_token_id": null,
   "hidden_dim": 3072,
   "id2label": {
-    "0": "Governing Laws",
-    "1": "Notices",
-    "2": "Counterparts",
-    "3": "Entire Agreements",
-    "4": "Severability",
-    "5": "Survival",
-    "6": "Amendments",
-    "7": "Assignments"
+    "0": "legal",
+    "1": "healthcare",
+    "2": "finance"
   },
   "initializer_range": 0.02,
   "label2id": {
-    "Amendments": 6,
-    "Assignments": 7,
-    "Counterparts": 2,
-    "Entire Agreements": 3,
-    "Governing Laws": 0,
-    "Notices": 1,
-    "Severability": 4,
-    "Survival": 5
+    "finance": 2,
+    "healthcare": 1,
+    "legal": 0
   },
   "max_position_embeddings": 512,
   "model_type": "distilbert",

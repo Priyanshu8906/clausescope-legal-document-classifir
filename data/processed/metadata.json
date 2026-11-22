@@ -1,0 +1,31 @@
+{
+  "seed": 42,
+  "labels": [
+    "legal",
+    "healthcare",
+    "finance"
+  ],
+  "source_counts": {
+    "train": {
+      "legal": 800,
+      "finance": 800,
+      "healthcare": 800
+    },
+    "validation": {
+      "legal": 100,
+      "finance": 100,
+      "healthcare": 100
+    },
+    "test": {
+      "legal": 100,
+      "finance": 100,
+      "healthcare": 100
+    }
+  },
+  "sources": {
+    "legal": "coastalcph/lex_glue, ledgar; official train/validation/test partitions",
+    "healthcare": "highnote/pubmed_qa, pqa_labeled; seeded 80/10/10 split",
+    "finance": "mteb/financial_phrasebank, default; official train/test partitions, training partition split for validation"
+  },
+  "preprocessing": "Remove control characters, normalize whitespace, concatenate PubMedQA question, abstract contexts, and long answer."
+}

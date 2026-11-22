@@ -1,78 +1,62 @@
-# ClauseScope — Legal Document Classifier
+# DomainDoc — Document Domain Classifier
 
-A small, reproducible NLP project that classifies **legal contract provisions** into their clause categories. It fine-tunes DistilBERT on the public **LEDGAR** subset of LexGLUE, reports held-out evaluation metrics, and provides a Streamlit interface for pasted text or uploaded documents.
+DomainDoc is an NLP class project that predicts whether a text document belongs to the **legal**, **healthcare**, or **finance** domain. It fine-tunes DistilBERT on real public text datasets, evaluates on held-out data, and offers a Streamlit interface for pasted text or `.txt`, `.pdf`, and `.docx` uploads.
 
-> This is an educational research prototype. It does not interpret a contract, provide legal advice, or establish that a clause is legally enforceable. Predictions are only as reliable as the training data and may be wrong, especially for long or out-of-domain documents.
+> This is an educational prototype. It classifies domain only; it does not provide legal, medical, or financial advice. Its confidence score is not a calibrated probability.
 
-## What it does
+## What is included
 
-- Downloads and stores the official train, validation, and test splits of LEDGAR as Parquet files.
-- Selects the most frequent clause labels using **training split only**, filters rare classes, and fine-tunes `distilbert-base-uncased` as a single-label classifier.
-- Reports accuracy, macro F1, weighted F1, and a confusion matrix on the dataset's held-out test split.
-- Saves the model, tokenizer, label map, and evaluation report under `artifacts/ledgar-distilbert/`.
-- Runs a local Streamlit UI. Input files can be `.txt`, `.pdf`, or `.docx`.
+- Source data for LEDGAR (legal), Financial PhraseBank (finance), and PubMedQA (healthcare).
+- A reproducible preprocessing step that builds balanced labeled splits with seed 42.
+- A DistilBERT fine-tuning script and held-out metrics/confusion matrix.
+- A local Streamlit app for document upload or pasted text.
 
-The project does not use a made-up dataset. The download script retrieves the real public Parquet splits and training reads them locally. The dataset contains short provisions, so this model classifies provisions, not arbitrary whole contracts. The app warns users when input is long and truncates to the model's 256-token limit.
+The source datasets have different formats and lengths: LEDGAR contains short legal provisions, Financial PhraseBank contains finance news sentences, and PubMedQA provides biomedical questions, abstract context, and answers. They are combined for a three-domain classroom prototype. The model is not a general-purpose whole-file document understanding system; it uses the first 192 tokens during training and the beginning of long inputs during inference.
 
-## Setup
+## Setup in VS Code (Windows)
 
-Python 3.10–3.12 is recommended. Install CPU or GPU-enabled PyTorch appropriate for your machine first if the default PyPI wheel is unsuitable, then:
+Open this folder in VS Code. In the integrated PowerShell terminal, create and activate a virtual environment, then install dependencies:
 
-```bash
+```powershell
 python -m venv .venv
-# Windows PowerShell
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 ```
 
-The pretrained base model is downloaded at runtime, so training needs internet access. Training is compute-intensive; a CUDA GPU is recommended. The defaults cap training at 400 examples per selected category and evaluation at 250 per category so a student workstation can finish. Increase those caps (or pass 0) for a larger experiment. Report the sample sizes from `metrics.json`.
+If you cloned this repository, run `git lfs pull` to fetch the trained model stored with Git LFS.
 
-## Train and evaluate
+## Prepare data and train
 
-Download and keep a local copy of all three dataset splits (Parquet):
+The raw public dataset files are included. To regenerate the balanced splits and train:
 
-```bash
+```powershell
 python download_data.py
+python prepare_data.py
+python train.py --epochs 2
 ```
 
-The training script reads these local files.
+The default preparation creates **800 training, 100 validation, and 100 test examples per domain** (2,400 / 300 / 300 total). Legal uses LEDGAR's official train/validation/test partitions. Finance uses Financial PhraseBank's train/test partitions and a held-out slice from its training partition for validation. Healthcare uses a seeded 80/10/10 split of the expert-labeled PubMedQA examples. The exact counts and sources are written to `data/processed/metadata.json` and the training report.
 
-```bash
-python train.py --top-k 8 --epochs 2
+Optional training controls:
+
+```powershell
+python train.py --epochs 3 --max-train-per-class 800 --max-eval-per-class 100 --batch-size 8
 ```
 
-Optional controls:
-
-```bash
-python train.py --top-k 8 --epochs 2 --max-train-per-class 800 --max-eval-per-class 500
-```
-
-`--max-*` controls limit examples per category; 0 uses every available example. The script writes `model/`, `metrics.json`, `label_map.json`, and a confusion-matrix SVG under `artifacts/ledgar-distilbert/`. It prints the selected labels and sample counts. Use validation metrics for iteration and keep the test split held out for evaluation.
+Training saves the model, tokenizer, `metrics.json`, `label_map.json`, and `confusion_matrix.svg` to `artifacts/domain-distilbert/`. The first training run downloads the pretrained checkpoint. A CUDA GPU is recommended; CPU training also works but takes longer.
 
 ## Run the app
 
-```bash
-python run_app.py
+```powershell
+python run_app.py --global.developmentMode false --server.port 8501 --server.address 127.0.0.1
 ```
 
-Train the model first. The app explains how to train it if no artifact exists. It does not silently substitute a keyword or mock classifier.
+Open the URL printed in the terminal. Keep that terminal running while you use the app. If port 8501 is busy, change the port in the command and open the new URL.
 
-## Project structure
+## Evaluation
 
-```text
-app.py                 Streamlit user interface
-train.py               Dataset preparation, fine-tuning, evaluation, artifacts
-requirements.txt       Python dependencies
-```
+The training script reports accuracy, macro F1, weighted F1, per-domain F1/support, and a confusion matrix on the held-out test split. Because the domains come from different source datasets, scores measure this particular mix and split; they are not a universal benchmark for document-domain classification. Review the per-domain results and inspect misclassified examples before reporting the result.
 
-## Method and limitations
+## Dataset attribution and limitations
 
-LEDGAR is a legal-domain dataset of labeled provisions from U.S. contracts. This is a **closed-set** classifier: it can only return one of the selected training labels. An unfamiliar clause may still receive a confident-looking label. The displayed softmax score is model confidence, not calibrated probability. No contract data is sent to a hosted inference service by this app, but the base-model download requires internet during training.
-
-For a class report, include the run's `metrics.json`, label distribution, confusion matrix, selected labels, training configuration, and a short error analysis. Do not report sample-run results as benchmark results. Cite the LexGLUE / LEDGAR paper and dataset card in your submission and verify the dataset's applicable license/terms before redistribution.
-
-## References
-
-- Chalkidis et al. (2022), *LexGLUE: A Benchmark Dataset for Legal Language Understanding in English*, ACL 2022.
-- Hugging Face dataset: `lex_glue`, configuration `ledgar`.
-- Base checkpoint: `distilbert/distilbert-base-uncased`.
+See [DATASETS.md](DATASETS.md) for source links, licenses, and citations. The classifier always chooses one of its three known domains, even for unrelated text, and can be influenced by the datasets' different writing styles. Do not use its predictions for high-stakes decisions.

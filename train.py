@@ -7,7 +7,6 @@ import random
 import re
 import sys
 import types
-from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -35,49 +34,49 @@ except ImportError:
 
 import torch
 from torch.utils.data import DataLoader
-import pyarrow.parquet as pq
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 MODEL_ID = "distilbert/distilbert-base-uncased"
-DATA_DIR = ROOT / "data" / "raw" / "ledgar"
+DATA_DIR = ROOT / "data" / "processed"
+LABELS = ["legal", "healthcare", "finance"]
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--top-k", type=int, default=8, help="Most frequent training labels to classify")
     parser.add_argument("--epochs", type=int, default=2)
     parser.add_argument("--max-length", type=int, default=192)
-    parser.add_argument("--max-train-per-class", type=int, default=400)
-    parser.add_argument("--max-eval-per-class", type=int, default=250)
+    parser.add_argument("--max-train-per-class", type=int, default=800)
+    parser.add_argument("--max-eval-per-class", type=int, default=100)
     parser.add_argument("--batch-size", type=int, default=8)
-    parser.add_argument("--output-dir", type=Path, default=ROOT / "artifacts" / "ledgar-distilbert")
+    parser.add_argument("--output-dir", type=Path, default=ROOT / "artifacts" / "domain-distilbert")
     parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args()
 
 
 def load_rows(split: str) -> list[dict]:
-    path = DATA_DIR / f"{split}.parquet"
+    path = DATA_DIR / f"{split}.jsonl"
     if not path.exists():
-        raise FileNotFoundError(f"Missing {path}. Run `python download_data.py` first.")
-    parquet = pq.ParquetFile(path)
-    return [row for group in range(parquet.num_row_groups)
-            for row in parquet.read_row_group(group, columns=["text", "label"]).to_pylist()]
+        raise FileNotFoundError(f"Missing {path}. Run `python download_data.py` and `python prepare_data.py` first.")
+    label_to_id = {name: index for index, name in enumerate(LABELS)}
+    return [
+        {"text": clean(row["text"]), "label": label_to_id[row["label"]]}
+        for row in (json.loads(line) for line in path.read_text(encoding="utf-8").splitlines())
+        if row.get("label") in label_to_id and row.get("text", "").strip()
+    ]
 
 
 def clean(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", " ", text or "")).strip()
 
 
-def choose(rows: list[dict], allowed: set[int], label_map: dict[int, int], cap: int, seed: int) -> list[dict]:
-    groups: dict[int, list[dict]] = {label: [] for label in allowed}
+def choose(rows: list[dict], cap: int, seed: int) -> list[dict]:
+    groups: dict[int, list[dict]] = {label: [] for label in range(len(LABELS))}
     for row in rows:
-        label = row["label"]
-        if label in allowed:
-            groups[label].append({"text": clean(row["text"]), "label": label_map[label]})
+        groups[row["label"]].append(row)
     chosen = []
     rng = random.Random(seed)
-    for original_label in sorted(allowed):
-        group = groups[original_label]
+    for label in range(len(LABELS)):
+        group = groups[label]
         rng.shuffle(group)
         chosen.extend(group[:cap] if cap > 0 else group)
     rng.shuffle(chosen)
@@ -128,7 +127,7 @@ def save_confusion_svg(path: Path, matrix: list[list[int]], names: list[str]) ->
     max_value = max((max(row) for row in matrix), default=1) or 1
     parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
              '<rect width="100%" height="100%" fill="white"/>',
-             '<text x="20" y="28" font-family="Arial" font-size="18" font-weight="bold">LEDGAR test confusion matrix</text>',
+             '<text x="20" y="28" font-family="Arial" font-size="18" font-weight="bold">Domain classifier test confusion matrix</text>',
              '<text x="20" y="52" font-family="Arial" font-size="12">Rows: true label · Columns: predicted label · raw counts</text>']
     for i, name in enumerate(names):
         y = margin_top + i * cell + 36
@@ -150,25 +149,20 @@ def main() -> None:
     args = parse_args()
     random.seed(args.seed)
     torch.manual_seed(args.seed)
-    labels = json.loads((DATA_DIR / "labels.json").read_text(encoding="utf-8"))["label_names"]
-    train_rows = load_rows("train")
-    counts = Counter(row["label"] for row in train_rows)
-    selected = [label for label, _ in counts.most_common(args.top_k)]
-    selected_names = [labels[label] for label in selected]
-    label_map = {old: new for new, old in enumerate(selected)}
-    print("Selected labels (frequency counted on train only):", flush=True)
-    for old, name in zip(selected, selected_names):
-        print(f"  {name}: {counts[old]:,}", flush=True)
-    train_samples = choose(train_rows, set(selected), label_map, args.max_train_per_class, args.seed)
-    val_samples = choose(load_rows("validation"), set(selected), label_map, args.max_eval_per_class, args.seed + 1)
-    test_samples = choose(load_rows("test"), set(selected), label_map, args.max_eval_per_class, args.seed + 2)
+    selected_names = LABELS
+    train_samples = choose(load_rows("train"), args.max_train_per_class, args.seed)
+    val_samples = choose(load_rows("validation"), args.max_eval_per_class, args.seed + 1)
+    test_samples = choose(load_rows("test"), args.max_eval_per_class, args.seed + 2)
+    print("Target domains:", ", ".join(selected_names), flush=True)
+    for index, name in enumerate(selected_names):
+        print(f"  {name}: train={sum(x['label'] == index for x in train_samples):,}, validation={sum(x['label'] == index for x in val_samples):,}, test={sum(x['label'] == index for x in test_samples):,}", flush=True)
     print(f"Selected samples — train {len(train_samples):,}, validation {len(val_samples):,}, test {len(test_samples):,}", flush=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device} ({torch.cuda.get_device_name(0) if device.type == 'cuda' else 'CPU'}); loading {MODEL_ID}", flush=True)
     tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
     model = AutoModelForSequenceClassification.from_pretrained(
-        MODEL_ID, num_labels=len(selected), id2label={i: name for i, name in enumerate(selected_names)},
+        MODEL_ID, num_labels=len(selected_names), id2label={i: name for i, name in enumerate(selected_names)},
         label2id={name: i for i, name in enumerate(selected_names)})
     model.to(device)
     use_amp = device.type == "cuda"
@@ -192,21 +186,23 @@ def main() -> None:
             steps += 1
             if steps % 25 == 0:
                 print(f"epoch {epoch+1}/{args.epochs} · step {steps}/{len(train_loader)} · loss {total_loss/steps:.4f}", flush=True)
-        val_metrics, _ = evaluate(model, val_loader, device, len(selected))
+        val_metrics, _ = evaluate(model, val_loader, device, len(selected_names))
         print(f"epoch {epoch+1}: train_loss={total_loss/max(steps,1):.4f}, val_accuracy={val_metrics['accuracy']:.4f}, val_macro_f1={val_metrics['macro_f1']:.4f}", flush=True)
 
     test_loader = make_loader(test_samples, tokenizer, args.batch_size * 2, args.max_length, False)
-    test_metrics, confusion = evaluate(model, test_loader, device, len(selected))
+    test_metrics, confusion = evaluate(model, test_loader, device, len(selected_names))
     args.output_dir.mkdir(parents=True, exist_ok=True)
     model_dir = args.output_dir / "model"
     model.save_pretrained(model_dir)
     tokenizer.save_pretrained(model_dir)
     (args.output_dir / "label_map.json").write_text(json.dumps({"labels": selected_names}, indent=2), encoding="utf-8")
-    report = {"dataset": "coastalcph/lex_glue / ledgar", "base_model": MODEL_ID,
+    data_metadata = json.loads((DATA_DIR / "metadata.json").read_text(encoding="utf-8"))
+    report = {"dataset": "legal + healthcare + finance text domain classification", "base_model": MODEL_ID,
               "device": str(device), "seed": args.seed, "epochs": args.epochs,
-              "max_length": args.max_length, "top_k": args.top_k,
+              "max_length": args.max_length,
               "max_train_per_class": args.max_train_per_class, "max_eval_per_class": args.max_eval_per_class,
               "labels": selected_names,
+              "data_sources": data_metadata["sources"],
               "sample_sizes": {"train": len(train_samples), "validation": len(val_samples), "test": len(test_samples)},
               "test": test_metrics, "confusion_matrix": confusion}
     (args.output_dir / "metrics.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
