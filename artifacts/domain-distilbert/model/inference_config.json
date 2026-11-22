@@ -1,0 +1,4 @@
+{
+  "max_length": 192,
+  "chunk_overlap": 64
+}

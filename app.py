@@ -25,13 +25,12 @@ except ImportError:
     pass
 
 import streamlit as st
+from classifier_runtime import DomainClassifier
 
 ROOT = Path(__file__).resolve().parent
 MODEL_DIR = ROOT / "artifacts" / "domain-distilbert" / "model"
+MODEL_FILE = MODEL_DIR / "classifier.pt"
 MAX_INPUT_CHARS = 180_000
-MAX_LENGTH = 192
-STRIDE = 64
-BATCH_SIZE = 8
 
 DOMAINS = {
     "legal": "Legal",
@@ -72,45 +71,11 @@ st.set_page_config(
 
 @st.cache_resource(show_spinner="Loading the local classifier…")
 def load_classifier(model_path: str):
-    import torch
-    from transformers import AutoModelForSequenceClassification, AutoTokenizer
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-    model = AutoModelForSequenceClassification.from_pretrained(model_path)
-    model.to(device)
-    model.eval()
-    return tokenizer, model, device
+    return DomainClassifier(model_path)
 
 
 def predict_document(text: str) -> tuple[list[tuple[str, float]], int]:
-    import torch
-
-    tokenizer, model, device = load_classifier(str(MODEL_DIR.resolve()))
-    encoded = tokenizer(
-        text,
-        truncation=True,
-        max_length=MAX_LENGTH,
-        stride=STRIDE,
-        return_overflowing_tokens=True,
-        padding=True,
-        return_tensors="pt",
-    )
-    inputs = {key: value for key, value in encoded.items() if key in {"input_ids", "attention_mask"}}
-    batches = []
-    with torch.inference_mode():
-        for start in range(0, len(inputs["input_ids"]), BATCH_SIZE):
-            batch = {key: value[start:start + BATCH_SIZE].to(device) for key, value in inputs.items()}
-            logits = model(**batch).logits
-            batches.append(torch.softmax(logits, dim=-1).cpu())
-    scores = torch.cat(batches, dim=0).mean(dim=0).tolist()
-    labels = model.config.id2label
-    results = sorted(
-        [(labels[index], float(score)) for index, score in enumerate(scores)],
-        key=lambda item: item[1],
-        reverse=True,
-    )
-    return results, len(inputs["input_ids"])
+    return load_classifier(str(MODEL_DIR.resolve())).predict(text)
 
 
 def read_document(upload) -> str:
@@ -155,7 +120,7 @@ with st.sidebar:
 st.title("Find the domain of a document", icon=":material/description:")
 st.markdown("Drop in a document or paste text. DomainDesk reviews the entire text and shows its strongest domain matches.")
 
-if not MODEL_DIR.exists():
+if not MODEL_FILE.exists():
     st.warning(
         "The expanded twelve-domain model is not installed yet. From the project folder, run `python download_data.py`, `python prepare_data.py`, and `python train.py`.",
         title="Model files are missing",
@@ -175,6 +140,7 @@ if input_mode == "Paste text":
     initial_text = EXAMPLES.get(example, "")
     document_text = st.text_area(
         "Document text",
+        key="document_text",
         value=initial_text,
         height=250,
         placeholder="Paste a contract, care note, financial report, lesson plan, business page, software document, research summary, news article, sports report, vehicle description, or arts review…",
@@ -183,6 +149,7 @@ if input_mode == "Paste text":
 else:
     uploaded = st.file_uploader(
         "Choose a document",
+        key="document_upload",
         type=["txt", "pdf", "docx"],
         help="Selectable-text PDFs work best. Scanned pages need OCR first.",
     )
@@ -209,7 +176,7 @@ classify = st.button(
     "Classify document",
     type="primary",
     icon=":material/search:",
-    disabled=not bool(document_text) or not MODEL_DIR.exists(),
+    disabled=not bool(document_text) or not MODEL_FILE.exists(),
     width="stretch",
 )
 

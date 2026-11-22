@@ -10,6 +10,7 @@ DomainDesk predicts the topic of English document text across **12 categories**:
 - English document-topic examples from an attributed web-document corpus, plus focused LEDGAR, PubMedQA, and Financial PhraseBank data.
 - Balanced sampling during training to account for the supplemental class examples.
 - Whole-document inference using overlapping text windows instead of silently classifying only the opening paragraph.
+- TorchScript inference with a small standard-library WordPiece tokenizer, so the app does not import Transformers' Windows-blocked `regex` extension at prediction time.
 - Streamlit UI with a calm green theme, sample inputs, upload or paste modes, top alternatives, and a brief text preview.
 - Local inference after dependencies and model files are installed; uploaded text is not sent to a hosted classifier.
 
@@ -27,6 +28,8 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 python -m pip install -r requirements.txt
 python run_app.py --global.developmentMode false --server.port 8501 --server.address 127.0.0.1
 ```
+
+For an existing clone, run `git pull origin main` before `git lfs pull` to get the latest app and TorchScript model.
 
 Open the local URL printed in the terminal. If port 8501 is already occupied, replace it with `8502` in the run command and open `http://localhost:8502`. Keep the terminal open while using the app.
 

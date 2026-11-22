@@ -38,6 +38,7 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 MODEL_ID = "distilbert/distilbert-base-uncased"
 DATA_DIR = ROOT / "data" / "processed"
+INFERENCE_MAX_LENGTH = 192
 LABELS = [
     "legal", "healthcare", "finance", "education", "business",
     "manufacturing", "technology", "science", "news_politics", "sports",
@@ -158,6 +159,27 @@ def save_confusion_svg(path: Path, matrix: list[list[int]], names: list[str]) ->
     path.write_text("\n".join(parts), encoding="utf-8")
 
 
+def save_torchscript(model, output_path: Path, max_length: int) -> None:
+    """Export inference without importing Transformers or its regex extension at runtime."""
+    class InferenceWrapper(torch.nn.Module):
+        def __init__(self, sequence_classifier):
+            super().__init__()
+            self.sequence_classifier = sequence_classifier
+
+        def forward(self, input_ids, attention_mask):
+            return self.sequence_classifier(input_ids=input_ids, attention_mask=attention_mask).logits
+
+    wrapped = InferenceWrapper(model.to("cpu").eval())
+    input_ids = torch.zeros((1, max_length), dtype=torch.long)
+    attention_mask = torch.ones((1, max_length), dtype=torch.long)
+    traced = torch.jit.trace(wrapped, (input_ids, attention_mask), check_trace=False)
+    traced.save(str(output_path))
+    # A TorchScript inference artifact is sufficient for the app. The training
+    # script always starts from the published base checkpoint, so this large
+    # duplicate state-dict file is not needed in the project download.
+    (output_path.parent / "model.safetensors").unlink(missing_ok=True)
+
+
 def main() -> None:
     args = parse_args()
     random.seed(args.seed)
@@ -208,6 +230,10 @@ def main() -> None:
     model_dir = args.output_dir / "model"
     model.save_pretrained(model_dir)
     tokenizer.save_pretrained(model_dir)
+    (model_dir / "inference_config.json").write_text(
+        json.dumps({"max_length": args.max_length, "chunk_overlap": 64}, indent=2), encoding="utf-8"
+    )
+    save_torchscript(model, model_dir / "classifier.pt", args.max_length)
     (args.output_dir / "label_map.json").write_text(json.dumps({"labels": selected_names}, indent=2), encoding="utf-8")
     data_metadata = json.loads((DATA_DIR / "metadata.json").read_text(encoding="utf-8"))
     report = {"dataset": "twelve-domain document classification using agentlans English Document Topic Classification plus LEDGAR, PubMedQA, and Financial PhraseBank", "base_model": MODEL_ID,

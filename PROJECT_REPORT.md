@@ -22,7 +22,7 @@ The combined prepared set has 2,400 training examples, 540 validation examples, 
 
 ## Model and interface
 
-The classifier fine-tunes `distilbert/distilbert-base-uncased` for two epochs with seed 42 and a maximum training sequence length of 192 tokens. At inference, the app divides long text into overlapping 192-token windows and averages their class scores. The Streamlit interface includes sample documents, file upload or text entry, the leading domain matches, and an extractive preview.
+The classifier fine-tunes `distilbert/distilbert-base-uncased` for two epochs with seed 42 and a maximum training sequence length of 192 tokens. For prediction, the model is exported to TorchScript and paired with a lightweight Python WordPiece tokenizer. This avoids importing Transformers' compiled `regex` extension at runtime, which Windows Application Control blocked on the user's machine. The app divides long text into overlapping 192-token windows and averages their class scores. The Streamlit interface includes sample documents, file upload or text entry, the leading domain matches, and an extractive preview.
 
 ## Held-out evaluation
 
